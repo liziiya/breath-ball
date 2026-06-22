@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>呼吸心球 · 一颗会呼吸的球</title>
+<style>
+  :root{
+    --ink: #2b2438;
+    --ink-soft: rgba(43,36,56,0.62);
+    --paper: #f4eef0;
+    --accent: #c98bb0;
+  }
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body{
+    margin:0; padding:0; width:100%; height:100%;
+    overscroll-behavior: none;
+    touch-action: none;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background:#1c1726;
+  }
+  #stage{
+    position: fixed; inset:0;
+    overflow:hidden;
+    user-select:none;
+  }
+  canvas#sky{ position:absolute; inset:0; display:block; }
+  canvas#game{ position:absolute; inset:0; display:block; }
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; align-items:center; justify-content:space-between;
+    padding: max(14px, env(safe-area-inset-top)) 18px 0 18px;
+    z-index: 5;
+    pointer-events:none;
+  }
+  .title{
+    font-size: 15px;
+    letter-spacing: 0.12em;
+    color: rgba(255,255,255,0.78);
+    font-weight: 500;
+  }
+  .title b{ font-weight:600; color:#fff; }
+  .icon-btn{
+    pointer-events: auto;
+    width: 36px; height:36px;
+    border-radius:50%;
+    border: 1px solid rgba(255,255,255,0.22);
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.85);
+    display:flex; align-items:center; justify-content:center;
+    font-size: 16px;
+    backdrop-filter: blur(6px);
+  }
+  .icon-btn:active{ background: rgba(255,255,255,0.16); }
+
+  /* ---------- breathing timer readout ---------- */
+  .timerwrap{
+    position:absolute;
+    top: max(60px, calc(env(safe-area-inset-top) + 60px));
+    left:0; right:0;
+    display:flex; flex-direction:column; align-items:center;
+    z-index: 5;
+    pointer-events:none;
+  }
+  .phase-label{
+    font-size: 14px;
+    letter-spacing: 0.18em;
+    color: rgba(255,255,255,0.7);
+    margin-bottom: 4px;
+    font-weight: 500;
+  }
+  .phase-label.in{ color: #f3c9e3; }
+  .phase-label.out{ color: #b9d6e8; }
+  .phase-time{
+    font-size: 34px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 2px 18px rgba(0,0,0,0.25);
+  }
+  .phase-time .slash{
+    font-size: 22px;
+    color: rgba(255,255,255,0.4);
+    font-weight: 500;
+    margin: 0 2px;
+  }
+  .phase-time .total{
+    font-size: 22px;
+    color: rgba(255,255,255,0.55);
+    font-weight: 500;
+  }
+  .phase-bar-track{
+    width: 120px; height: 4px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.14);
+    margin-top: 10px;
+    overflow:hidden;
+  }
+  .phase-bar-fill{
+    height:100%;
+    border-radius:4px;
+    width:0%;
+    background: linear-gradient(90deg, #e7a9cf, #f3c9e3);
+    transition: background 0.3s ease;
+  }
+  .phase-bar-fill.out{ background: linear-gradient(90deg, #8fb8d6, #b9d6e8); }
+
+  /* ---------- breath guide row (吸/呼 建议秒) ---------- */
+  .breath-guide-row{
+    display:flex; align-items:center; gap: 10px;
+    margin-top: 10px;
+    opacity: 0.72;
+  }
+  .breath-guide-item{
+    display:flex; align-items:center; gap: 4px;
+    font-size: 12px;
+  }
+  .breath-guide-item.in{ color: #f3c9e3; }
+  .breath-guide-item.out{ color: #b9d6e8; }
+  .breath-guide-icon{ font-size: 10px; }
+  .breath-guide-label{ letter-spacing: 0.06em; }
+  .breath-guide-val{ font-weight: 600; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .breath-guide-sep{ color: rgba(255,255,255,0.25); font-size: 12px; }
+
+  /* ---------- bottom guidance ---------- */
+  .bottom{
+    position:absolute; left:0; right:0; bottom:0;
+    display:flex; flex-direction:column; align-items:center;
+    padding: 0 24px max(28px, env(safe-area-inset-bottom)) 24px;
+    z-index:5;
+    pointer-events:none;
+  }
+  .cue{
+    font-size: 19px;
+    color: rgba(255,255,255,0.92);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    margin-bottom: 8px;
+    min-height: 26px;
+    text-align:center;
+    transition: opacity 0.4s ease;
+  }
+  .sub{
+    font-size: 13px;
+    color: rgba(255,255,255,0.5);
+    text-align:center;
+    min-height: 18px;
+    letter-spacing: 0.02em;
+  }
+  .breathcount{
+    position:absolute;
+    bottom: max(86px, calc(env(safe-area-inset-bottom) + 86px));
+    left:0; right:0;
+    text-align:center;
+    font-size: 12px;
+    color: rgba(255,255,255,0.34);
+    letter-spacing: 0.08em;
+    z-index:4;
+    pointer-events:none;
+  }
+
+  /* ---------- onboarding overlay ---------- */
+  .veil{
+    position:absolute; inset:0;
+    background: radial-gradient(ellipse at 50% 35%, #2c2240 0%, #1a1424 70%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    z-index: 20;
+    padding: 40px 32px;
+    text-align:center;
+    transition: opacity 0.8s ease, visibility 0.8s ease;
+  }
+  .veil.hide{ opacity:0; visibility:hidden; pointer-events:none; }
+  .veil-orb{
+    width: 86px; height:86px;
+    border-radius:50%;
+    margin-bottom: 30px;
+    box-shadow: 0 0 50px 12px rgba(201,139,176,0.45);
+    animation: veilbreathe 4.6s ease-in-out infinite;
+  }
+  @keyframes veilbreathe{
+    0%, 100% { transform: scale(0.84); }
+    45% { transform: scale(1.08); }
+    70% { transform: scale(1.08); }
+  }
+  .veil h1{
+    font-size: 22px; font-weight:600;
+    color: #fff; letter-spacing: 0.06em;
+    margin: 0 0 14px 0;
+  }
+  .veil p{
+    font-size: 14.5px; line-height: 1.85;
+    color: rgba(255,255,255,0.62);
+    margin: 0 0 34px 0;
+    max-width: 290px;
+  }
+  .start-btn{
+    pointer-events:auto;
+    border:none;
+    padding: 14px 40px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #e7a9cf, #9a6bb0);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    box-shadow: 0 8px 24px rgba(154,107,176,0.45);
+  }
+  .start-btn:active{ transform: scale(0.97); }
+  .veil-foot{
+    margin-top: 22px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.32);
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="sky"></canvas>
+  <canvas id="game"></canvas>
+
+  <div class="topbar">
+    <div class="title">呼吸<b>心球</b></div>
+    <button class="icon-btn" id="soundBtn" aria-label="声音">♪</button>
+  </div>
+
+  <div class="timerwrap">
+    <div class="phase-label in" id="phaseLabel">吸气</div>
+    <div class="phase-time">
+      <span id="phaseElapsed">0</span><span class="slash">/</span><span class="total" id="phaseTotal">4</span><span class="total">s</span>
+    </div>
+    <div class="phase-bar-track"><div class="phase-bar-fill" id="phaseBarFill"></div></div>
+    <div class="breath-guide-row" id="breathGuideRow">
+      <div class="breath-guide-item in">
+        <span class="breath-guide-icon">↑</span>
+        <span class="breath-guide-label">吸</span>
+        <span class="breath-guide-val" id="guideIn">4s</span>
+      </div>
+      <div class="breath-guide-sep">·</div>
+      <div class="breath-guide-item out">
+        <span class="breath-guide-icon">↓</span>
+        <span class="breath-guide-label">呼</span>
+        <span class="breath-guide-val" id="guideOut">6s</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="breathcount" id="breathCount"></div>
+
+  <div class="bottom">
+    <div class="cue" id="cueText">轻轻按住心球</div>
+    <div class="sub" id="subText">跟随它的节奏，缓缓吸气</div>
+  </div>
+
+  <div class="veil" id="veil">
+    <canvas class="veil-orb" id="veilOrbCanvas" width="172" height="172" style="width:86px; height:86px;"></canvas>
+    <h1>呼吸心球</h1>
+    <p>长按屏幕，跟随引导缓缓吸气，球会慢慢胀大；<br>松开手，缓缓呼气，让它轻轻飘出去，<br>看它在屏幕边缘轻柔地弹起、滑行、安顿下来。</p>
+    <button class="start-btn" id="startBtn">开始呼吸</button>
+    <div class="veil-foot">建议戴上耳机，找一处可以安静坐下的地方</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ============================================================
+  //  基础设置
+  // ============================================================
+  const stage = document.getElementById('stage');
+  const skyCanvas = document.getElementById('sky');
+  const gameCanvas = document.getElementById('game');
+  const skyCtx = skyCanvas.getContext('2d');
+  const ctx = gameCanvas.getContext('2d');
+
+  const cueText = document.getElementById('cueText');
+  const subText = document.getElementById('subText');
+  const breathCountEl = document.getElementById('breathCount');
+  const veil = document.getElementById('veil');
+  const startBtn = document.getElementById('startBtn');
+  const soundBtn = document.getElementById('soundBtn');
+  const phaseLabel = document.getElementById('phaseLabel');
+  const phaseElapsed = document.getElementById('phaseElapsed');
+  const phaseTotal = document.getElementById('phaseTotal');
+  const phaseBarFill = document.getElementById('phaseBarFill');
+  const guideIn = document.getElementById('guideIn');
+  const guideOut = document.getElementById('guideOut');
+
+  let W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+
+  function resize(){
+    W = window.innerWidth;
+    H = window.innerHeight;
+    [skyCanvas, gameCanvas].forEach(c=>{
+      c.width = W * DPR;
+      c.height = H * DPR;
+      c.style.width = W + 'px';
+      c.style.height = H + 'px';
+    });
+    skyCtx.setTransform(DPR,0,0,DPR,0,0);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    if (ball){
+      ball.x = Math.min(ball.x, W - ball.baseR - 6);
+      ball.y = Math.min(ball.y, H - ball.baseR - 6);
+    }
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', resize);
+
+  // ============================================================
+  //  呼吸节律  —— 4s 吸气 / 6s 呼气（约每分钟 6 次，舒缓的共振呼吸频率）
+  // ============================================================
+  const INHALE_MS = 4000;
+  const EXHALE_MS = 6000;
+  let breathCount = 0;
+
+  function getActiveBreathState(t){
+    if (pressing && ball.state === 'growing'){
+      const elapsed = t - pressStartT;
+      const progress = Math.min(elapsed / INHALE_MS, 1);
+      return { phase: 'in', progress, elapsed };
+    } else if (ball.state === 'flying'){
+      const elapsed = t - ball.flyStart;
+      const progress = Math.min(elapsed / EXHALE_MS, 1);
+      return { phase: 'out', progress, elapsed };
+    } else {
+      // 初始默认阶段：不计数，显示 0/4s 吸气
+      return { phase: 'in', progress: 0, elapsed: 0 };
+    }
+  }
+
+  function easeInOutSine(x){ return -(Math.cos(Math.PI * x) - 1) / 2; }
+
+  // ============================================================
+  //  色彩 —— 黄昏紫粉色系，缓慢漂移
+  // ============================================================
+  const skyStops = [
+    ['#2c2240', '#1a1424'],
+    ['#352a4d', '#1e1730'],
+    ['#3a2a47', '#201828'],
+    ['#2f2640', '#191222'],
+  ];
+  let skyMix = 0;
+
+  function lerpColor(a, b, t){
+    const pa = hexToRgb(a), pb = hexToRgb(b);
+    const r = Math.round(pa[0] + (pb[0]-pa[0])*t);
+    const g = Math.round(pa[1] + (pb[1]-pa[1])*t);
+    const bl = Math.round(pa[2] + (pb[2]-pa[2])*t);
+    return `rgb(${r},${g},${bl})`;
+  }
+  function hexToRgb(h){
+    h = h.replace('#','');
+    return [parseInt(h.substr(0,2),16), parseInt(h.substr(2,2),16), parseInt(h.substr(4,2),16)];
+  }
+
+  // 漂浮的远景光点（营造宁静的氛围，非常缓慢）
+  const motes = [];
+  function initMotes(){
+    motes.length = 0;
+    const n = Math.round((W*H)/26000);
+    for(let i=0;i<n;i++){
+      motes.push({
+        x: Math.random()*W,
+        y: Math.random()*H,
+        r: 0.6 + Math.random()*1.8,
+        baseA: 0.08 + Math.random()*0.22,
+        speed: 0.10 + Math.random()*0.18,
+        drift: Math.random()*Math.PI*2,
+        twk: Math.random()*Math.PI*2
+      });
+    }
+  }
+
+  function drawSky(t){
+    const cyclePos = (t * 0.000018) % skyStops.length;
+    const i0 = Math.floor(cyclePos) % skyStops.length;
+    const i1 = (i0+1) % skyStops.length;
+    const f = cyclePos - Math.floor(cyclePos);
+    const top = lerpColor(skyStops[i0][0], skyStops[i1][0], f);
+    const bot = lerpColor(skyStops[i0][1], skyStops[i1][1], f);
+
+    const g = skyCtx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0, top);
+    g.addColorStop(1, bot);
+    skyCtx.fillStyle = g;
+    skyCtx.fillRect(0,0,W,H);
+
+    // 极柔和的呼吸光晕，根据主动呼吸进度轻轻明暗
+    const bp = getActiveBreathState(t);
+    const e = easeInOutSine(bp.progress);
+    const glowStrength = bp.phase === 'in' ? 0.05 + e*0.05 : 0.10 - e*0.05;
+    const rg = skyCtx.createRadialGradient(W*0.5, H*0.42, 10, W*0.5, H*0.42, Math.max(W,H)*0.75);
+    rg.addColorStop(0, `rgba(231,169,207,${glowStrength})`);
+    rg.addColorStop(1, 'rgba(231,169,207,0)');
+    skyCtx.fillStyle = rg;
+    skyCtx.fillRect(0,0,W,H);
+
+    // 远景光点
+    for(const m of motes){
+      m.twk += 0.006;
+      m.x += Math.cos(m.drift) * m.speed * 0.05;
+      m.y += Math.sin(m.drift) * m.speed * 0.05 - 0.02;
+      if (m.y < -10) m.y = H + 10;
+      if (m.x < -10) m.x = W + 10;
+      if (m.x > W+10) m.x = -10;
+      const a = m.baseA + Math.sin(m.twk)*0.08;
+      skyCtx.beginPath();
+      skyCtx.fillStyle = `rgba(255,244,250,${Math.max(0,a)})`;
+      skyCtx.arc(m.x, m.y, m.r, 0, Math.PI*2);
+      skyCtx.fill();
+    }
+  }
+
+  // ============================================================
+  //  小球
+  // ============================================================
+  const ball = {
+    x: 0, y: 0,
+    vx: 0, vy: 0,
+    baseR: 0,
+    maxGrowR: 0,
+    r: 0,
+    state: 'idle',      // idle | growing | flying | settling
+    growStart: 0,
+    holdT: 0,
+    angleSeed: Math.random()*Math.PI*2,
+    hue: 0,
+    squashX: 1, squashY: 1,
+  };
+
+  function setupBall(){
+    ball.baseR = Math.min(W,H) * 0.072;
+    ball.maxGrowR = ball.baseR * 1.9;
+    ball.r = ball.baseR;
+    ball.x = W/2;
+    ball.y = H*0.42;
+    ball.vx = 0; ball.vy = 0;
+    ball.state = 'idle';
+  }
+
+  // 拖尾粒子
+  const trail = [];
+  function emitTrail(){
+    trail.push({
+      x: ball.x, y: ball.y, r: ball.r*0.5,
+      life: 1, decay: 0.018 + Math.random()*0.012
+    });
+    if (trail.length > 60) trail.shift();
+  }
+
+  function drawTrail(){
+    for(let i = trail.length-1; i>=0; i--){
+      const p = trail[i];
+      p.life -= p.decay;
+      if (p.life <= 0){ trail.splice(i,1); continue; }
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(231,169,207,${0.16*p.life})`;
+      ctx.arc(p.x, p.y, p.r*p.life, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  // ============================================================
+  //  呼吸引导环（围绕小球，吸气展开 / 呼气收回）
+  // ============================================================
+  function drawGuideRing(t){
+    const bp = getActiveBreathState(t);
+    const e = easeInOutSine(bp.progress);
+    let ringScale;
+    if (bp.phase === 'in') ringScale = 0.7 + e*0.5;
+    else ringScale = 1.2 - e*0.5;
+
+    const baseRing = ball.baseR * 1.9;
+    const ringR = baseRing * ringScale;
+
+    ctx.save();
+    ctx.translate(ball.x, ball.y);
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([2, 7]);
+    ctx.arc(0,0, ringR, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    return bp;
+  }
+
+  // ============================================================
+  //  绘制小球本体（柔光渐变 + 挤压形变）
+  // ============================================================
+  function drawBall(){
+    ctx.save();
+    ctx.translate(ball.x, ball.y);
+
+    const speed = Math.hypot(ball.vx, ball.vy);
+    // 速度方向上的轻微"水滴"拉伸，增加柔软感，幅度很小
+    let stretch = Math.min(speed / 90, 0.16);
+    let angle = Math.atan2(ball.vy, ball.vx);
+    if (speed < 4) { stretch = 0; angle = 0; }
+
+    ctx.rotate(angle);
+    const sx = (1 + stretch) * ball.squashX;
+    const sy = (1 - stretch*0.7) * ball.squashY;
+    ctx.scale(sx, sy);
+
+    const r = ball.r;
+    const glowR = r * 2.6;
+    const glow = ctx.createRadialGradient(-r*0.25, -r*0.3, r*0.1, 0, 0, glowR);
+    glow.addColorStop(0, 'rgba(255,232,243,0.55)');
+    glow.addColorStop(0.5, 'rgba(231,169,207,0.16)');
+    glow.addColorStop(1, 'rgba(231,169,207,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0,0, glowR, 0, Math.PI*2);
+    ctx.fill();
+
+    const body = ctx.createRadialGradient(-r*0.32, -r*0.35, r*0.08, 0, 0, r);
+    body.addColorStop(0, '#fff6fb');
+    body.addColorStop(0.35, '#f3c9e3');
+    body.addColorStop(0.7, '#cf93c3');
+    body.addColorStop(1, '#8f5fa3');
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.arc(0,0, r, 0, Math.PI*2);
+    ctx.fill();
+
+    // 高光
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.ellipse(-r*0.32, -r*0.34, r*0.22, r*0.14, -0.5, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // ============================================================
+  //  交互：长按吸气胀大 → 松手呼气弹射
+  // ============================================================
+  let pressing = false;
+  let pressStartT = 0;
+  // 记录触摸轨迹，用于计算松手时的方向
+  let touchHistory = []; // [{x, y, t}, ...]
+  let maxPressForce = 0.5; // 默认按压力度，没有力度感应的设备以此为基准
+
+  function pointInBall(px, py){
+    return Math.hypot(px - ball.x, py - ball.y) < Math.max(ball.r, ball.baseR) * 1.6;
+  }
+
+  function onPressStart(px, py, t, force){
+    if (ball.state === 'flying') return; // 飞行中不可重新抓取，等它自己慢下来
+    if (!pointInBall(px, py)) return;
+    pressing = true;
+    pressStartT = t;
+    maxPressForce = (force !== undefined && force > 0) ? force : 0.5;
+    touchHistory = [{x: px, y: py, t}];
+    ball.state = 'growing';
+    ball.vx *= 0.2; ball.vy *= 0.2;
+    setCue('继续按住…慢慢吸气', '感受它在指尖下轻轻胀大');
+  }
+
+  function onPressEnd(t){
+    if (!pressing) return;
+    pressing = false;
+    if (ball.state !== 'growing') return;
+
+    const held = t - pressStartT;
+
+    // 计算手指滑动的速度（像素/毫秒）
+    let flickSpeed = 0;
+    if (touchHistory.length >= 2) {
+      const now = t;
+      const recent = touchHistory.filter(p => now - p.t < 150);
+      if (recent.length >= 2) {
+        const first = recent[0];
+        const last = recent[recent.length - 1];
+        const dx = last.x - first.x;
+        const dy = last.y - first.y;
+        const dtMs = last.t - first.t;
+        if (dtMs > 0) {
+          flickSpeed = Math.hypot(dx, dy) / dtMs;
+        }
+      }
+    }
+
+    // 1. 吸气时长能量因子 (0 ~ 1.25)
+    const inhaleEnergy = Math.min(held / INHALE_MS, 1.25);
+
+    // 2. 划动速度能量因子 (0 ~ 1.5)
+    // 快速的甩动大概是 2.5 像素/毫秒
+    const flickEnergy = Math.min(flickSpeed / 2.5, 1.5);
+
+    // 3. 按压力度能量因子
+    const forceEnergy = maxPressForce; // 0 ~ 1
+
+    // 组合弹射速度：吸气时长决定基础速度，划动速度和力度进行额外加成
+    const baseLaunchSpeed = 70 + inhaleEnergy * 150; // 正常满吸气时基础速度约为 220
+    
+    // 计算综合力道因子
+    const effort = flickEnergy * 1.4 + (forceEnergy - 0.5) * 1.0;
+    
+    let boostFactor;
+    if (effort > 0) {
+      // 采用二次方曲线，只有在很用力时速度才会有爆发性增长
+      boostFactor = 1.0 + Math.pow(effort, 2) * 1.6;
+    } else {
+      // 负向力道，让弹射更柔和
+      boostFactor = 1.0 + effort * 0.8;
+    }
+    
+    let speed = baseLaunchSpeed * Math.max(0.2, boostFactor);
+
+    // 限幅在合理范围（40 到 1500 像素/秒），确保效果极具动态且可控
+    speed = Math.min(Math.max(speed, 40), 1500);
+
+    // 从触摸轨迹中计算松手瞬间的移动方向
+    let angle = null;
+    if (touchHistory.length >= 2){
+      // 优先取最近 250ms 内的滑动方向
+      const now = t;
+      const recent = touchHistory.filter(p => now - p.t < 250);
+      if (recent.length >= 2){
+        const first = recent[0];
+        const last = recent[recent.length - 1];
+        const dx = last.x - first.x;
+        const dy = last.y - first.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 8){ // 有明显的滑动距离
+          angle = Math.atan2(dy, dx);
+        }
+      }
+      // 如果没有明显的快速滑动，但最终位置与初始按压位置有明显偏移，则取整体拖拽方向
+      if (angle === null) {
+        const first = touchHistory[0];
+        const last = touchHistory[touchHistory.length - 1];
+        const dx = last.x - first.x;
+        const dy = last.y - first.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 12) {
+          angle = Math.atan2(dy, dx);
+        }
+      }
+    }
+
+    // 如果没有拖拽，默认往斜上方（-75度到-105度之间）弹射，像上升的气球
+    if (angle === null) {
+      angle = -Math.PI / 2 + (Math.random() - 0.5) * 0.5;
+    }
+
+    ball.angleSeed = angle;
+
+    ball.vx = Math.cos(angle) * speed;
+    ball.vy = Math.sin(angle) * speed;
+
+    ball.state = 'flying';
+    ball.flyStart = t;
+    ball.growAtRelease = ball.r;
+    touchHistory = [];
+    setCue('松开了，慢慢呼气', '看着它轻轻飘向远处');
+  }
+
+  function getXY(e){
+    if (e.touches && e.touches[0]) return [e.touches[0].clientX, e.touches[0].clientY];
+    if (e.changedTouches && e.changedTouches[0]) return [e.changedTouches[0].clientX, e.changedTouches[0].clientY];
+    return [e.clientX, e.clientY];
+  }
+
+  function isUiTarget(e){
+    const el = e.target;
+    return !!(el.closest && el.closest('button, .veil, .icon-btn'));
+  }
+
+  stage.addEventListener('touchstart', (e)=>{
+    if (isUiTarget(e)) return;                 // 不要拦截按钮/弹层上的触摸
+    if (veil && !veil.classList.contains('hide')) return;
+    e.preventDefault();
+    const [x,y] = getXY(e);
+    const force = (e.touches && e.touches[0]) ? (e.touches[0].force || 0) : 0;
+    onPressStart(x,y, performance.now(), force);
+  }, {passive:false});
+
+  stage.addEventListener('touchend', (e)=>{
+    if (isUiTarget(e)) return;                 // 不要拦截按钮/弹层上的触摸，否则会吞掉它们的 click
+    e.preventDefault();
+    // 记录最后触点位置（changedTouches）
+    if (pressing && e.changedTouches && e.changedTouches[0]){
+      touchHistory.push({x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY, t: performance.now()});
+    }
+    onPressEnd(performance.now());
+  }, {passive:false});
+
+  stage.addEventListener('touchmove', (e)=>{
+    if (!pressing) return;
+    e.preventDefault();
+    if (e.touches && e.touches[0]){
+      const now = performance.now();
+      const force = e.touches[0].force || 0;
+      if (force > 0) {
+        maxPressForce = Math.max(maxPressForce, force);
+      }
+      touchHistory.push({x: e.touches[0].clientX, y: e.touches[0].clientY, t: now});
+      if (touchHistory.length > 30) touchHistory.shift();
+    }
+  }, {passive:false});
+  stage.addEventListener('touchcancel', (e)=>{
+    if (isUiTarget(e)) return;
+    onPressEnd(performance.now());
+  }, {passive:false});
+
+  // 桌面鼠标支持（方便预览/测试）
+  stage.addEventListener('mousedown', (e)=>{
+    if (isUiTarget(e)) return;
+    if (veil && !veil.classList.contains('hide')) return;
+    onPressStart(e.clientX, e.clientY, performance.now(), 0.5);
+  });
+  window.addEventListener('mousemove', (e)=>{
+    if (!pressing) return;
+    touchHistory.push({x: e.clientX, y: e.clientY, t: performance.now()});
+    if (touchHistory.length > 30) touchHistory.shift();
+  });
+  window.addEventListener('mouseup', (e)=>{
+    if (pressing){
+      touchHistory.push({x: e.clientX, y: e.clientY, t: performance.now()});
+    }
+    onPressEnd(performance.now());
+  });
+
+  // 开始按钮：用独立、明确的事件绑定，确保移动端点击一定生效
+  // 防止 touchend 之后浏览器又派发一次合成 click，导致按钮被触发两次
+  let lastUiActionT = 0;
+  function debounceUi(){
+    const now = performance.now();
+    if (now - lastUiActionT < 400) return false;
+    lastUiActionT = now;
+    return true;
+  }
+
+  function handleStart(e){
+    if (!debounceUi()) return;
+    if (e) e.preventDefault();
+    initAudio();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    veil.classList.add('hide');
+  }
+  startBtn.addEventListener('touchend', handleStart, {passive:false});
+  startBtn.addEventListener('click', handleStart);
+
+
+  // ============================================================
+  //  文案引导
+  // ============================================================
+  function setCue(main, sub){
+    if (cueText.textContent !== main){
+      cueText.style.opacity = 0;
+      setTimeout(()=>{ cueText.textContent = main; cueText.style.opacity = 1; }, 180);
+    }
+    if (sub !== undefined && subText.textContent !== sub){
+      subText.style.opacity = 0;
+      setTimeout(()=>{ subText.textContent = sub; subText.style.opacity = 1; }, 180);
+    }
+  }
+
+  let lastT = performance.now();
+
+  function update(t, dt){
+    // ---- 小球状态机 ----
+    if (ball.state === 'growing'){
+      const held = t - pressStartT;
+      const growth = Math.min(held / INHALE_MS, 1.25);
+      const e = easeInOutSine(Math.min(growth,1));
+      let targetR = ball.baseR + (ball.maxGrowR - ball.baseR) * e;
+      if (growth > 1){
+        // 超过引导时长后，进入轻柔的"屏息"呼吸波动，而不是继续无限变大
+        const pulse = Math.sin(t*0.004) * ball.baseR * 0.04;
+        targetR = ball.maxGrowR + pulse;
+      }
+      ball.r += (targetR - ball.r) * Math.min(dt*6, 1);
+      ball.squashX += (1 - ball.squashX) * 0.2;
+      ball.squashY += (1 - ball.squashY) * 0.2;
+    }
+    else if (ball.state === 'flying'){
+      const flyElapsed = t - ball.flyStart;
+      const shrinkProgress = Math.min(flyElapsed / EXHALE_MS, 1);
+      const e = easeInOutSine(shrinkProgress);
+      ball.r = ball.growAtRelease + (ball.baseR - ball.growAtRelease) * e;
+
+      // 阻尼：像在轻柔的空气/水中滑行，持续减速，绝不会越飞越快
+      const damp = Math.pow(0.985, dt*60);
+      ball.vx *= damp;
+      ball.vy *= damp;
+
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+
+      // 边界反弹（柔和损耗 + 轻微挤压形变）
+      const r = ball.r;
+      let bounced = false;
+      if (ball.x - r < 0){ ball.x = r; ball.vx = Math.abs(ball.vx)*0.82; bounced = true; }
+      if (ball.x + r > W){ ball.x = W - r; ball.vx = -Math.abs(ball.vx)*0.82; bounced = true; }
+      if (ball.y - r < 0){ ball.y = r; ball.vy = Math.abs(ball.vy)*0.82; bounced = true; }
+      if (ball.y + r > H){ ball.y = H - r; ball.vy = -Math.abs(ball.vy)*0.82; bounced = true; }
+
+      if (bounced){
+        ball.squashX = 1.22; ball.squashY = 0.8;
+        emitTrail(); emitTrail();
+        playPing();
+      }
+      ball.squashX += (1 - ball.squashX) * 0.18;
+      ball.squashY += (1 - ball.squashY) * 0.18;
+
+      if (Math.random() < 0.55) emitTrail();
+
+      // 当呼气时长达到建议的 6 秒时，恢复不计数的默认阶段，等待下一次摁下
+      if (flyElapsed >= EXHALE_MS){
+        ball.state = 'idle';
+        ball.vx = 0; ball.vy = 0;
+        breathCount++;
+        updateBreathCount();
+        setCue('很好，再来一次', '轻轻按住心球，缓缓吸气');
+      }
+    }
+    else {
+      // idle：极轻的悬浮感，让画面不死
+      ball.squashX += (1 - ball.squashX) * 0.1;
+      ball.squashY += (1 - ball.squashY) * 0.1;
+      const bob = Math.sin(t*0.0012) * 2.2;
+      ball._bobOffset = bob;
+    }
+  }
+
+  function updateBreathCount(){
+    if (breathCount > 0){
+      breathCountEl.textContent = `第 ${breathCount} 次呼吸`;
+    }
+  }
+
+  // ============================================================
+  //  背景音乐：Sacred Play Secret Place（YouTube IFrame API）
+  //  及呼吸音效（Web Audio API ping）
+  // ============================================================
+  let audioCtx = null;
+  let soundOn = false;
+  let ytPlayer = null;
+  let ytReady = false;
+
+  // 注入 YouTube IFrame API
+  function loadYT(){
+    if (window.YT) { onYTReady(); return; }
+    window.onYouTubeIframeAPIReady = onYTReady;
+    const s = document.createElement('script');
+    s.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(s);
+  }
+
+  function onYTReady(){
+    const container = document.createElement('div');
+    container.id = 'yt-hidden';
+    container.style.cssText = 'position:fixed;width:1px;height:1px;left:-9999px;top:-9999px;pointer-events:none;visibility:hidden;';
+    document.body.appendChild(container);
+    ytPlayer = new YT.Player('yt-hidden', {
+      videoId: 'XX2gPs44fxg',
+      playerVars: { autoplay: 0, controls: 0, loop: 1, playlist: 'XX2gPs44fxg', rel: 0, modestbranding: 1 },
+      events: {
+        onReady: (ev) => {
+          ytReady = true;
+          ev.target.setVolume(60);
+          if (soundOn) ev.target.playVideo();
+        }
+      }
+    });
+  }
+
+  function initAudio(){
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    loadYT();
+  }
+
+  function updateAudio(t){
+    // 呼吸节律音效已移除，仅保留 ping 音效
+  }
+
+  function playPing(){
+    if (!soundOn || !audioCtx) return;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.value = 520 + Math.random()*80;
+    g.gain.value = 0.0001;
+    o.connect(g); g.connect(audioCtx.destination);
+    const now = audioCtx.currentTime;
+    g.gain.exponentialRampToValueAtTime(0.045, now+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, now+0.5);
+    o.start(now);
+    o.stop(now+0.55);
+  }
+
+  function handleSoundToggle(e){
+    if (!debounceUi()) return;
+    if (e) e.preventDefault();
+    initAudio();
+    soundOn = !soundOn;
+    soundBtn.style.opacity = soundOn ? '1' : '0.55';
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    if (ytReady && ytPlayer){
+      if (soundOn) ytPlayer.playVideo();
+      else ytPlayer.pauseVideo();
+    }
+  }
+  soundBtn.addEventListener('touchend', handleSoundToggle, {passive:false});
+  soundBtn.addEventListener('click', handleSoundToggle);
+  soundBtn.style.opacity = '0.55';
+
+  // ============================================================
+  //  主循环
+  // ============================================================
+  function updateTimerUI(t){
+    const bp = getActiveBreathState(t);
+
+    // 确定当前阶段的实际已过秒数
+    let actualElapsed = bp.elapsed / 1000;
+    let total = (bp.phase === 'in' ? INHALE_MS : EXHALE_MS) / 1000;
+    
+    // 状态文案
+    let label;
+    if (bp.phase === 'in') {
+      label = (ball.state === 'growing') ? '吸气中' : '吸气';
+    } else {
+      label = '呼气中';
+    }
+    
+    let isIn = bp.phase === 'in';
+
+    phaseLabel.textContent = label;
+    phaseLabel.className = 'phase-label ' + (isIn ? 'in' : 'out');
+    
+    // 1. 秒数只显示整数，去除小数点
+    phaseElapsed.textContent = Math.floor(Math.min(actualElapsed, total));
+    phaseTotal.textContent = Math.round(total);
+
+    const fillPct = Math.min(actualElapsed / total, 1) * 100;
+    phaseBarFill.style.width = fillPct + '%';
+    phaseBarFill.className = 'phase-bar-fill' + (isIn ? '' : ' out');
+
+    // 建议秒数（始终显示）
+    guideIn.textContent = (INHALE_MS/1000).toFixed(0) + 's';
+    guideOut.textContent = (EXHALE_MS/1000).toFixed(0) + 's';
+  }
+
+  function frame(t){
+    const dt = Math.min((t - lastT)/1000, 0.05);
+    lastT = t;
+
+    update(t, dt);
+
+    drawSky(t);
+
+    ctx.clearRect(0,0,W,H);
+    drawTrail();
+    drawGuideRing(t);
+
+    if (ball.state === 'idle'){
+      ctx.save();
+      ctx.translate(0, ball._bobOffset || 0);
+      drawBallAtCurrentPos();
+      ctx.restore();
+    } else {
+      drawBall();
+    }
+
+    updateAudio(t);
+    updateTimerUI(t);
+
+    requestAnimationFrame(frame);
+  }
+
+  function drawBallAtCurrentPos(){
+    drawBall();
+  }
+
+  function drawVeilOrb(){
+    const c = document.getElementById('veilOrbCanvas');
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    const w = 172;
+    const h = 172;
+    ctx.clearRect(0,0,w,h);
+    
+    const cx = w/2;
+    const cy = h/2;
+    const r = w/2 - 4; // 留白以防裁切边缘
+    
+    // 绘制小球本体渐变
+    const body = ctx.createRadialGradient(cx - r*0.32, cy - r*0.35, r*0.08, cx, cy, r);
+    body.addColorStop(0, '#fff6fb');
+    body.addColorStop(0.35, '#f3c9e3');
+    body.addColorStop(0.7, '#cf93c3');
+    body.addColorStop(1, '#8f5fa3');
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI*2);
+    ctx.fill();
+
+    // 绘制高光
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.ellipse(cx - r*0.32, cy - r*0.34, r*0.22, r*0.14, -0.5, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // ============================================================
+  //  启动
+  // ============================================================
+  function boot(){
+    resize();
+    setupBall();
+    initMotes();
+    drawVeilOrb();
+    lastT = performance.now();
+    requestAnimationFrame(frame);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
